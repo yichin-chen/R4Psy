@@ -1,0 +1,233 @@
+---
+title: "DEBUG"
+output: html_notebook
+---
+```{r, echo=FALSE}
+# Packages
+if (!requireNamespace('pacman', quietly = TRUE)) {
+    install.packages('pacman')
+}
+
+pacman::p_load(
+  # 本节课需要用到的 packages
+  here, tidyverse, bruceR, DT, car, lmerTest, lme4,
+  # 生成课件
+  xaringan, xaringanthemer, xaringanExtra)
+
+# remove.packages("Matrix")
+# install.packages("Matrix", type = "source")
+
+# 改变R在显示大数字和小数字时是选择常规格式还是科学计数法的倾向
+options(scipen=999)
+
+# 还原设置 options(scipen = 0)
+```
+
+## 假数据
+```{r}
+n_subs <- 100
+
+data <- expand.grid(
+  Sub = 1:n_subs, # Subject IDs
+  trial = 1:100,
+  Valence = c("moral", "immoral"), # Valence
+  Identity = c("self", "other") # Identity
+)
+
+data$RT <- abs(rnorm(nrow(data), mean = 1000, sd = 100))
+
+head(data)
+
+data$Valence <- as.factor(data$Valence)
+data$Identity <- as.factor(data$Identity)
+
+
+```
+
+# aov_ez是否先求平均不影响结果
+```{r}
+afex::aov_ez(
+  data = data,
+  id = 'Sub',dv = 'RT',
+  within = c("Identity","Valence"),
+  fun_aggregate = mean,
+  type = 3)
+```
+
+```{r}
+data %>% group_by(Sub, Valence, Identity) %>%
+  summarise(RT = mean(RT)) %>% 
+  afex::aov_ez(
+  id = 'Sub',dv = 'RT',
+  within = cc('Identity,Valence'),
+  fun_aggregate = mean)
+```
+
+# 简化模型不报boundary fit
+```{r}
+data %>% lmer(
+  data = .,
+  RT ~ Identity*Valence + (1|Sub)
+) %>%
+  anova(type = 3)
+```
+# lmer是否先求平均会影响结果
+```{r}
+data %>% lmer(
+  data = .,
+  RT ~ Identity*Valence + (1|Sub) + (1 |Sub:Identity) + (1 |Sub:Valence)
+) %>%
+  anova(type = 3)
+```
+
+```{r}
+data %>% group_by(Sub, Valence, Identity) %>%
+  summarise(RT = mean(RT)) %>% 
+  lmer(
+  data = .,
+  RT ~ Identity*Valence + (1|Sub) + (1 |Sub:Identity) + (1 |Sub:Valence)
+) %>%
+  anova(type = 3)
+```
+
+
+
+# 数据分析
+
+```{r}
+mt_raw <- bruceR::import('data/match/match_raw.csv')
+
+mt_raw <- mt_raw %>% 
+  tidyr::extract(Shape, 
+                 into = c("Valence", "Identity"),
+                 regex = "(moral|immoral)(Self|Other)",
+                 remove = FALSE)
+
+
+mt_mean <- mt_raw %>%
+  dplyr::filter(!is.na(RT) & Match == "match" & ACC == 1) %>%
+  dplyr::group_by(Sub,Identity,Valence) %>%
+  dplyr::summarise(RT = mean(RT)) %>%
+  dplyr::ungroup()
+data1 =  mt_raw %>%
+  dplyr::filter(!is.na(RT) & Match == "match" & ACC == 1)
+```
+
+```{r}
+m_aov1 = afex::aov_ez(id = 'Sub',
+                    within = cc('Identity,Valence'),
+                    dv = 'RT',data = mt_raw,fun_aggregate = mean)
+m_aov1_rm = afex::aov_ez(id = 'Sub',
+                    within = cc('Identity,Valence'),
+                    dv = 'RT',fun_aggregate = mean,
+                    data = mt_raw %>% 
+                      filter(!(Sub %in% c(7302, 7303, 7338))))
+
+
+
+
+
+
+m_aov2 = afex::aov_ez(id = 'Sub',
+                    within = cc('Identity,Valence'),
+                    dv = 'RT',data = mt_mean,fun_aggregate = mean)
+
+
+
+m_aov2_rm = afex::aov_ez(id = 'Sub',
+                    within = cc('Identity,Valence'),
+                    dv = 'RT',fun_aggregate = mean,
+                    data = mt_mean %>% 
+                      filter(!(Sub %in% c(7302, 7303, 7338))))
+
+m_aov1 # mt_aov
+m_aov2 # mt_mean
+m_aov3 # mt_aov 删除被试
+m_aov4 # mt_mean 删除被试
+
+```
+
+
+```{r}
+## exclude 7302, 7303, 7338
+
+## 
+model1 = lmer(data = mt_raw, 
+              RT~ Identity * Valence + (1 + Identity*Valence|Sub))
+
+model1_rm = lmer(data = mt_raw %>% 
+                      filter(!(Sub %in% c(7302, 7303, 7338))),
+          RT~ Identity * Valence + (1 + Identity*Valence|Sub))
+
+
+# 报错
+model2 = lmer(data = mt_mean, 
+              RT~ Identity * Valence + (1 + Identity*Valence|Sub)) ## 报错
+
+model2_rm = lmer(data = mt_mean %>% 
+                      filter(!(Sub %in% c(7302, 7303, 7338))),
+          RT~ Identity * Valence + (1 + Identity*Valence|Sub))
+
+
+
+
+anova(m2)
+anova(m_rm)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+#  不剔除
+m_aov1 = afex::aov_ez(id = 'Sub',
+                    within = cc('Identity,Valence'),
+                    dv = 'RT',data = mt_raw,fun_aggregate = mean)
+model1 = lmer(data = mt_raw, 
+              RT~ Identity * Valence + (1 + Identity*Valence|Sub))
+
+# 剔除数据
+m_aov1_rm = afex::aov_ez(id = 'Sub',
+                    within = cc('Identity,Valence'),
+                    dv = 'RT',fun_aggregate = mean,
+                    data = mt_raw %>% 
+                      filter(!(Sub %in% c(7302, 7303, 7338))))
+model1_rm = lmer(data = mt_raw %>% 
+                      filter(!(Sub %in% c(7302, 7303, 7338))),
+          RT~ Identity * Valence + (1 + Identity*Valence|Sub))
+
+m_aov1
+model1 %>% anova()
+m_aov1_rm
+model1_rm %>% anova()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
